@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Blessed D MultiService - Sistema de Inventario y Ventas</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 0;}
+        header { background: #4B0082; color: white; padding: 20px 0; text-align: center;}
+        nav { background: #eee; padding: 10px; display: flex; justify-content: center; gap: 20px;}
+        nav button { background: #4B0082; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;}
+        nav button.active { background: #9370DB; }
+        section { display: none; padding: 30px 10vw; background: white; min-height: 60vh;}
+        section.active { display: block; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px;}
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left;}
+        th { background: #eee;}
+        .form-group { margin-bottom: 10px; }
+        .form-group label { display: block; }
+        .form-group input, .form-group select { width: 100%; padding: 6px; }
+        .totals { margin-top: 10px; font-weight: bold; }
+        .edit-btn, .delete-btn { cursor: pointer; color: #4B0082; border: none; background: none; }
+        .modal-bg {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.4); justify-content: center; align-items: center; z-index: 1000;
+        }
+        .modal-bg.active { display: flex; }
+        .modal { background: white; padding: 20px; border-radius: 10px; min-width: 300px; }
+        .clock-link { margin: 20px auto; text-align: center; }
+        .clock-link a { color: #4B0082; text-decoration: underline; font-weight: bold;}
+        .ventas-filtros { display: flex; gap: 15px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;}
+        .ventas-filtros label { font-weight: bold;}
+        .ventas-filtros select, .ventas-filtros input, .ventas-filtros button { padding: 4px 7px;}
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Blessed D MultiService</h1>
+        <p>Gestión de Inventario, Ventas y Asistencia</p>
+    </header>
+    <div class="clock-link">
+        <a href="clock.html" target="_blank">Ir a Clock In/Clock Out (página de asistencia para empleados)</a>
+    </div>
+    <nav>
+        <button id="nav-inventario" class="active">Inventario</button>
+        <button id="nav-ventas">Ventas</button>
+        <button id="nav-reporte">Reporte de Ventas</button>
+        <button id="nav-ingreso">Ingreso Detallado</button>
+    </nav>
+
+    <!-- Inventario -->
+    <section id="seccion-inventario" class="active">
+        <h2>Inventario de Productos</h2>
+        <form id="form-producto">
+            <input type="hidden" id="producto-edit-index" value="">
+            <div class="form-group">
+                <label>Nombre del Producto:</label>
+                <input type="text" id="producto-nombre" required>
+            </div>
+            <div class="form-group">
+                <label>Cantidad:</label>
+                <input type="number" id="producto-cantidad" required min="0">
+            </div>
+            <div class="form-group">
+                <label>Precio de Venta ($):</label>
+                <input type="number" id="producto-precio" required min="0" step="0.01">
+            </div>
+            <button type="submit">Guardar Producto</button>
+            <button type="button" id="cancelar-edicion-producto" style="display:none;">Cancelar</button>
+        </form>
+        <h3>Lista de Productos</h3>
+        <table id="tabla-inventario">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Cantidad</th>
+                    <th>Precio ($)</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Productos aquí -->
+            </tbody>
+        </table>
+    </section>
+
+    <!-- Ventas -->
+    <section id="seccion-ventas">
+        <h2>Ventas de Productos</h2>
+        <form id="form-venta">
+            <input type="hidden" id="venta-edit-index" value="">
+            <div class="form-group">
+                <label>Producto:</label>
+                <select id="venta-producto"></select>
+            </div>
+            <div class="form-group">
+                <label>Cantidad:</label>
+                <input type="number" id="venta-cantidad" required min="1">
+            </div>
+            <div class="form-group">
+                <label>Casillero:</label>
+                <input type="text" id="venta-casillero" placeholder="Nombre del casillero/usuario" required>
+            </div>
+            <div class="form-group">
+                <label>Fecha de venta:</label>
+                <input type="date" id="venta-fecha" required>
+            </div>
+            <button type="submit">Guardar Venta</button>
+            <button type="button" id="cancelar-edicion-venta" style="display:none;">Cancelar</button>
+        </form>
+        <div class="ventas-filtros">
+            <label for="ventas-filtro-casillero">Casillero:</label>
+            <select id="ventas-filtro-casillero"></select>
+            <label for="ventas-filtro-desde">Fecha desde:</label>
+            <input type="date" id="ventas-filtro-desde">
+            <label for="ventas-filtro-hasta">Fecha hasta:</label>
+            <input type="date" id="ventas-filtro-hasta">
+            <button type="button" onclick="buscarVentas()">Buscar</button>
+            <button type="button" onclick="borrarFiltroVentas()">Limpiar Filtros</button>
+        </div>
+        <h3>Ventas Registradas</h3>
+        <table id="tabla-ventas">
+            <thead>
+                <tr>
+                    <th>Casillero</th>
+                    <th>Producto</th>
+                    <th>Cantidad</th>
+                    <th>Total ($)</th>
+                    <th>Fecha/Hora</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Ventas aquí -->
+            </tbody>
+        </table>
+        <div class="totals" id="ventas-total"></div>
+    </section>
+
+    <!-- Reporte de Ventas -->
+    <section id="seccion-reporte">
+        <h2>Reporte Mensual de Ventas</h2>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <button type="button" id="mes-anterior-btn">&lt;</button>
+            <input type="month" id="reporte-mes" value="">
+            <button type="button" id="mes-siguiente-btn">&gt;</button>
+        </div>
+        <table id="tabla-reporte">
+            <thead>
+                <tr>
+                    <th>Casillero</th>
+                    <th>Producto</th>
+                    <th>Cantidad Vendida</th>
+                    <th>Total Ingresos ($)</th>
+                    <th>Comisión de Cheques ($)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Reporte aquí -->
+            </tbody>
+        </table>
+        <div class="totals" id="reporte-total"></div>
+    </section>
+
+    <!-- Ingreso Detallado -->
+    <section id="seccion-ingreso">
+        <h2>Ingreso Detallado de Productos</h2>
+        <form id="form-ingreso">
+            <div class="form-group">
+                <label>Producto:</label>
+                <select id="ingreso-producto"></select>
+            </div>
+            <div class="form-group">
+                <label>Cantidad a ingresar:</label>
+                <input type="number" id="ingreso-cantidad" required min="1">
+            </div>
+            <button type="submit">Registrar Ingreso</button>
+        </form>
+        <h3>Historial de Ingresos</h3>
+        <table id="tabla-ingresos">
+            <thead>
+                <tr>
+                    <th>Producto</th>
+                    <th>Cantidad</th>
+                    <th>Fecha/Hora</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Ingresos aquí -->
+            </tbody>
+        </table>
+    </section>
+
+    <!-- Modals -->
+    <div class="modal-bg" id="modal-bg">
+        <div class="modal" id="modal-content"></div>
+    </div>
+
+    <script>
+        function guardar(key, data) { localStorage.setItem(key, JSON.stringify(data)); }
+        function cargar(key, def=[]) { return JSON.parse(localStorage.getItem(key)) || def; }
+        function hoy() { return new Date().toISOString().slice(0,10); }
+        function mesActual() { return new Date().toISOString().slice(0,7); }
+        function hora12(dtStr) {
+            const dt = new Date(dtStr);
+            let hours = dt.getHours();
+            let minutes = dt.getMinutes();
+            let seconds = dt.getSeconds();
+            let ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            let h = String(hours).padStart(2, '0');
+            let m = String(minutes).padStart(2, '0');
+            let s = String(seconds).padStart(2, '0');
+            return `${h}:${m}:${s} ${ampm}`;
+        }
+        function addDays(strDate, days) {
+            let d = new Date(strDate);
+            d.setDate(d.getDate() + days);
+            return d.toISOString().slice(0,10);
+        }
+
+        let productos = cargar('productos');
+        let ventas = cargar('ventas');
+        let ingresos = cargar('ingresos');
+        let ventasFiltradas = [];
+
+        // Navegación
+        document.querySelectorAll('nav button').forEach(btn => {
+            btn.onclick = () => {
+                document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+                btn.classList.add('active');
+                document.querySelectorAll('section').forEach(s=>s.classList.remove('active'));
+                document.getElementById('seccion-' + btn.id.split('-')[1]).classList.add('active');
+                if(btn.id==='nav-reporte') actualizarReporte();
+                if(btn.id==='nav-ventas') { actualizarVentasFiltros(); buscarVentas(); }
+                if(btn.id==='nav-inventario') actualizarInventario();
+                if(btn.id==='nav-ingreso') actualizarIngreso();
+            }
+        });
+
+        // MODAL
+        function mostrarModal(msg) {
+            let modalBG = document.getElementById('modal-bg');
+            let modal = document.getElementById('modal-content');
+            modal.innerHTML = msg + '<br><br><button onclick="cerrarModal()">OK</button>';
+            modalBG.classList.add('active');
+        }
+        function cerrarModal() {
+            document.getElementById('modal-bg').classList.remove('active');
+        }
+
+        // INVENTARIO
+        function actualizarInventario() {
+            let tbody = document.querySelector('#tabla-inventario tbody');
+            tbody.innerHTML = '';
+            productos.forEach((p,i) => {
+                let tr = document.createElement('tr');
+                tr.innerHTML = `<td>${p.nombre}</td><td>${p.cantidad}</td><td>${p.precio.toFixed(2)}</td>
+                <td>
+                    <button class="edit-btn" onclick="editarProducto(${i})">Editar</button>
+                    <button class="delete-btn" onclick="eliminarProducto(${i})">Eliminar</button>
+                </td>`;
+                tbody.appendChild(tr);
+            });
+            actualizarSelectProductos();
+            limpiarFormProducto();
+        }
+        function eliminarProducto(idx) {
+            if(confirm('¿Eliminar este producto?')){
+                productos.splice(idx,1);
+                guardar('productos', productos);
+                actualizarInventario();
+                actualizarSelectProductos();
+            }
+        }
+        function editarProducto(idx) {
+            let p = productos[idx];
+            document.getElementById('producto-nombre').value = p.nombre;
+            document.getElementById('producto-cantidad').value = p.cantidad;
+            document.getElementById('producto-precio').value = p.precio;
+            document.getElementById('producto-edit-index').value = idx;
+            document.getElementById('cancelar-edicion-producto').style.display = '';
+        }
+        function limpiarFormProducto() {
+            document.getElementById('form-producto').reset();
+            document.getElementById('producto-edit-index').value = '';
+            document.getElementById('cancelar-edicion-producto').style.display = 'none';
+        }
+        document.getElementById('form-producto').onsubmit = function(e) {
+            e.preventDefault();
+            let nombre = document.getElementById('producto-nombre').value.trim();
+            let cantidad = Number(document.getElementById('producto-cantidad').value);
+            let precio = Number(document.getElementById('producto-precio').value);
+            let idx = document.getElementById('producto-edit-index').value;
+            if(!nombre) return;
+            if(idx==='') {
+                productos.push({nombre, cantidad, precio});
+            } else {
+                productos[idx] = {nombre, cantidad, precio};
+            }
+            guardar('productos', productos);
+            limpiarFormProducto();
+            actualizarInventario();
+            actualizarSelectProductos();
+        };
+        document.getElementById('cancelar-edicion-producto').onclick = limpiarFormProducto;
+
+        // Selects de productos
+        function actualizarSelectProductos() {
+            let selectVenta = document.getElementById('venta-producto');
+            let selectIngreso = document.getElementById('ingreso-producto');
+            [selectVenta, selectIngreso].forEach(sel=>{
+                sel.innerHTML = '';
+                productos.forEach((p,i)=>{
+                    let option = document.createElement('option');
+                    option.value = i;
+                    option.textContent = p.nombre;
+                    sel.appendChild(option);
+                });
+            });
+        }
+
+        // --- VENTAS ---
+        function actualizarVentasFiltros() {
+            let filtroCasillero = document.getElementById('ventas-filtro-casillero');
+            let casilleros = [...new Set(ventas.map(v=>v.casillero).filter(v=>!!v))];
+            filtroCasillero.innerHTML = '<option value="">Todos</option>';
+            casilleros.forEach(c=>{
+                let option = document.createElement('option');
+                option.value = c;
+                option.textContent = c;
+                filtroCasillero.appendChild(option);
+            });
+            let filtroHasta = document.getElementById('ventas-filtro-hasta');
+            let filtroDesde = document.getElementById('ventas-filtro-desde');
+            if (!filtroHasta.value) filtroHasta.value = hoy();
+            if (!filtroDesde.value) filtroDesde.value = addDays(hoy(), -30);
+        }
+
+        function borrarFiltroVentas() {
+            document.getElementById('ventas-filtro-casillero').value = "";
+            document.getElementById('ventas-filtro-hasta').value = hoy();
+            document.getElementById('ventas-filtro-desde').value = addDays(hoy(), -30);
+            buscarVentas();
+        }
+
+        function buscarVentas() {
+            let filtroCasillero = document.getElementById('ventas-filtro-casillero').value;
+            let filtroDesde = document.getElementById('ventas-filtro-desde').value;
+            let filtroHasta = document.getElementById('ventas-filtro-hasta').value;
+            ventasFiltradas = ventas.filter(v => {
+                let coincideCasillero = filtroCasillero ? v.casillero === filtroCasillero : true;
+                let f = v.fecha ? v.fecha.slice(0,10) : "";
+                let coincideFechas = (!filtroDesde || f >= filtroDesde) && (!filtroHasta || f <= filtroHasta);
+                return coincideCasillero && coincideFechas;
+            });
+            mostrarVentas();
+        }
+
+        function mostrarVentas() {
+            let tbody = document.querySelector('#tabla-ventas tbody');
+            tbody.innerHTML = '';
+            let total = 0;
+            ventasFiltradas.forEach((v,idx)=>{
+                let nombre = productos[v.producto]?.nombre || 'Eliminado';
+                let precio = productos[v.producto]?.precio || 0;
+                let totalVenta = v.cantidad * precio;
+                let tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${v.casillero || ''}</td>
+                    <td>${nombre}</td>
+                    <td>${v.cantidad}</td>
+                    <td>${totalVenta.toFixed(2)}</td>
+                    <td>${v.fecha ? (v.fecha.slice(0,10) + " " + hora12(v.fecha)) : ""}</td>
+                    <td>
+                        <button class="edit-btn" onclick="editarVenta(${ventas.indexOf(v)})">Editar</button>
+                        <button class="delete-btn" onclick="eliminarVenta(${ventas.indexOf(v)})">Eliminar</button>
+                    </td>`;
+                tbody.appendChild(tr);
+                total += totalVenta;
+            });
+            document.getElementById('ventas-total').textContent = `Total vendido: $${total.toFixed(2)}`;
+            limpiarFormVenta();
+        }
+
+        function eliminarVenta(idx) {
+            if(confirm('¿Eliminar esta venta?')){
+                ventas.splice(idx,1);
+                guardar('ventas', ventas);
+                actualizarVentasFiltros();
+                buscarVentas();
+                actualizarInventario();
+            }
+        }
+        function editarVenta(idx) {
+            let v = ventas[idx];
+            document.getElementById('venta-producto').value = v.producto;
+            document.getElementById('venta-cantidad').value = v.cantidad;
+            document.getElementById('venta-casillero').value = v.casillero || '';
+            document.getElementById('venta-edit-index').value = idx;
+            document.getElementById('venta-fecha').value = v.fecha ? v.fecha.slice(0,10) : hoy();
+            document.getElementById('cancelar-edicion-venta').style.display = '';
+        }
+        function limpiarFormVenta() {
+            document.getElementById('form-venta').reset();
+            document.getElementById('venta-edit-index').value = '';
+            document.getElementById('cancelar-edicion-venta').style.display = 'none';
+            document.getElementById('venta-fecha').value = hoy();
+        }
+        document.getElementById('form-venta').onsubmit = function(e) {
+            e.preventDefault();
+            let idx = Number(document.getElementById('venta-producto').value);
+            let cantidad = Number(document.getElementById('venta-cantidad').value);
+            let casillero = document.getElementById('venta-casillero').value.trim();
+            let editIdx = document.getElementById('venta-edit-index').value;
+            let fechaForm = document.getElementById('venta-fecha').value;
+            let fecha = fechaForm ? (fechaForm + "T12:00:00.000Z") : new Date().toISOString();
+            if (productos[idx]) {
+                if(editIdx !== '') {
+                    let ventaVieja = ventas[editIdx];
+                    productos[ventaVieja.producto].cantidad += ventaVieja.cantidad;
+                    if(productos[idx].cantidad < cantidad) {
+                        mostrarModal('Cantidad insuficiente para la edición.');
+                        return;
+                    }
+                    productos[idx].cantidad -= cantidad;
+                    ventas[editIdx] = {producto: idx, cantidad, fecha, casillero};
+                } else {
+                    if(productos[idx].cantidad < cantidad) {
+                        mostrarModal('Cantidad insuficiente en inventario');
+                        return;
+                    }
+                    productos[idx].cantidad -= cantidad;
+                    ventas.push({producto: idx, cantidad, fecha, casillero});
+                }
+                guardar('ventas', ventas);
+                guardar('productos', productos);
+                limpiarFormVenta();
+                actualizarVentasFiltros();
+                buscarVentas();
+                actualizarInventario();
+            }
+        };
+        document.getElementById('cancelar-edicion-venta').onclick = limpiarFormVenta;
+
+        // REPORTE DE VENTAS
+        function cambiarMesReporte(direccion) {
+            let input = document.getElementById('reporte-mes');
+            let actual = input.value || mesActual();
+            let fecha = new Date(actual + '-01');
+            fecha.setMonth(fecha.getMonth() + direccion);
+            let nuevoMes = fecha.toISOString().slice(0,7);
+            input.value = nuevoMes;
+            actualizarReporte();
+        }
+        document.getElementById('mes-anterior-btn').onclick = function() { cambiarMesReporte(-1); }
+        document.getElementById('mes-siguiente-btn').onclick = function() { cambiarMesReporte(1); }
+        document.getElementById('reporte-mes').onchange = actualizarReporte;
+
+        function actualizarReporte() {
+            let mes = document.getElementById('reporte-mes').value || mesActual();
+            document.getElementById('reporte-mes').value = mes;
+            let tbody = document.querySelector('#tabla-reporte tbody');
+            tbody.innerHTML = '';
+            let resumen = {};
+            let total = 0;
+            let totalComisiones = 0;
+            ventas.filter(v=>v.fecha.startsWith(mes)).forEach(v=>{
+                let nombre = productos[v.producto]?.nombre || 'Eliminado';
+                let precio = productos[v.producto]?.precio || 0;
+                let esCheque = /cheque/i.test(nombre);
+                let comision = esCheque ? (v.cantidad * precio * 0.03) : 0;
+                let key = (v.casillero || 'Sin Casillero') + '||' + nombre;
+                if(!resumen[key]) resumen[key]={casillero: v.casillero || 'Sin Casillero', nombre, cantidad:0, total:0, comision:0};
+                resumen[key].cantidad += v.cantidad;
+                resumen[key].total += v.cantidad * precio;
+                resumen[key].comision += comision;
+                total += v.cantidad * precio;
+                totalComisiones += comision;
+            });
+            for(let key in resumen) {
+                let r = resumen[key];
+                let tr = document.createElement('tr');
+                tr.innerHTML = `<td>${r.casillero}</td><td>${r.nombre}</td><td>${r.cantidad}</td><td>${r.total.toFixed(2)}</td><td>${r.comision.toFixed(2)}</td>`;
+                tbody.appendChild(tr);
+            }
+            document.getElementById('reporte-total').textContent = `Ingresos del mes: $${total.toFixed(2)} | Total Comisión Cheques: $${totalComisiones.toFixed(2)}`;
+        }
+
+        // INGRESO DETALLADO
+        function actualizarIngreso() {
+            let tbody = document.querySelector('#tabla-ingresos tbody');
+            tbody.innerHTML = '';
+            ingresos.forEach(i=>{
+                let nombre = productos[i.producto]?.nombre || 'Eliminado';
+                let fechaStr = i.fecha.slice(0,10) + ' ' + hora12(i.fecha);
+                let tr = document.createElement('tr');
+                tr.innerHTML = `<td>${nombre}</td><td>${i.cantidad}</td><td>${fechaStr}</td>`;
+                tbody.appendChild(tr);
+            });
+        }
+        document.getElementById('form-ingreso').onsubmit = function(e) {
+            e.preventDefault();
+            let idx = Number(document.getElementById('ingreso-producto').value);
+            let cantidad = Number(document.getElementById('ingreso-cantidad').value);
+            if (productos[idx]) {
+                productos[idx].cantidad += cantidad;
+                ingresos.push({producto: idx, cantidad, fecha: new Date().toISOString()});
+                guardar('productos', productos);
+                guardar('ingresos', ingresos);
+                this.reset();
+                actualizarIngreso();
+                actualizarInventario();
+            }
+        };
+
+        document.getElementById('ventas-filtro-casillero').onchange = buscarVentas;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            if(!document.getElementById('reporte-mes').value)
+                document.getElementById('reporte-mes').value = mesActual();
+            actualizarReporte();
+            actualizarVentasFiltros();
+            buscarVentas();
+            document.getElementById('venta-fecha').value = hoy();
+        });
+
+        window.eliminarProducto = eliminarProducto;
+        window.editarProducto = editarProducto;
+        window.eliminarVenta = eliminarVenta;
+        window.editarVenta = editarVenta;
+        window.cerrarModal = cerrarModal;
+        window.borrarFiltroVentas = borrarFiltroVentas;
+        window.buscarVentas = buscarVentas;
+    </script>
+</body>
+</html>

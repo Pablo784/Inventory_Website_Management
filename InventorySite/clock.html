@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Clock In / Clock Out - Blessed D MultiService</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 0; padding: 0;}
+        header { background: #4B0082; color: white; padding: 20px 0; text-align: center;}
+        .container { max-width: 600px; margin: 30px auto; background: white; border-radius: 10px; box-shadow: 0 2px 8px #ddd; padding: 30px;}
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; }
+        .form-group input { width: 100%; padding: 8px; }
+        .btn-clock { background: #4B0082; color: white; border: none; border-radius: 5px; padding: 10px 20px; margin: 5px;}
+        .clock-entry { margin: 10px 0; border: 1px solid #ccc; border-radius: 8px; padding: 10px; background: #f3f3f3;}
+        .modal-bg {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.4); justify-content: center; align-items: center; z-index: 1000;
+        }
+        .modal-bg.active { display: flex; }
+        .modal { background: white; padding: 20px; border-radius: 10px; min-width: 300px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px;}
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left;}
+        th { background: #eee;}
+        .historial-header { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+        .fecha-select { padding: 6px 12px; }
+        .download-btn { background: #228B22; color: white; border: none; border-radius: 5px; padding: 8px 16px; cursor: pointer;}
+        .download-btn:active { background: #135813; }
+        .edit-btn, .delete-btn { background: none; border: none; cursor: pointer; color: #4B0082; font-weight: bold; margin-right: 6px;}
+        .edit-btn:hover, .delete-btn:hover { text-decoration: underline; }
+        .edit-time-group { display: flex; gap: 8px; align-items: center; }
+        .edit-time-input { width: 110px; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Blessed D MultiService</h1>
+        <p>Clock In / Clock Out</p>
+    </header>
+    <div class="container">
+        <form id="form-clock">
+            <div class="form-group">
+                <label>Nombre de usuario:</label>
+                <input type="text" id="clock-nombre" required placeholder="Tu nombre o usuario">
+            </div>
+            <button type="button" class="btn-clock" onclick="registrarClock('in')">Clock In</button>
+            <button type="button" class="btn-clock" onclick="registrarClock('out')">Clock Out</button>
+        </form>
+        <div class="historial-header" style="margin-top:30px;">
+            <div>
+                <b>Selecciona la fecha:</b>
+                <input type="date" id="clock-fecha" class="fecha-select">
+            </div>
+            <button class="download-btn" onclick="descargarPoncheos()">Descargar Poncheos del Día</button>
+        </div>
+        <h3>Historial de Poncheos</h3>
+        <div id="clock-historial"></div>
+        <div style="text-align:center;margin-top:20px;">
+            <a href="index.html" style="color:#4B0082;text-decoration:underline;">Volver al Sistema Principal</a>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal-bg" id="modal-bg">
+        <div class="modal" id="modal-content"></div>
+    </div>
+
+    <script>
+        function guardar(key, data) { localStorage.setItem(key, JSON.stringify(data)); }
+        function cargar(key, def=[]) { return JSON.parse(localStorage.getItem(key)) || def; }
+        function hoy() { return new Date().toISOString().slice(0,10); }
+        // Hora de 12 horas con am/pm
+        function horaActual() {
+            let d = new Date();
+            let hours = d.getHours();
+            let minutes = d.getMinutes();
+            let seconds = d.getSeconds();
+            let ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            let h = String(hours).padStart(2, '0');
+            let m = String(minutes).padStart(2, '0');
+            let s = String(seconds).padStart(2, '0');
+            return `${h}:${m}:${s} ${ampm}`;
+        }
+        // convertir "2025-07-04T01:23:45.000Z" a hora 12-horas local
+        function hora12FromISO(isoStr) {
+            let d = new Date(isoStr);
+            let hours = d.getHours();
+            let minutes = d.getMinutes();
+            let seconds = d.getSeconds();
+            let ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            let h = String(hours).padStart(2, '0');
+            let m = String(minutes).padStart(2, '0');
+            let s = String(seconds).padStart(2, '0');
+            return `${h}:${m}:${s} ${ampm}`;
+        }
+        function fechaInputValue(date) {
+            // Date as YYYY-MM-DD
+            if (!date) date = new Date();
+            let d = new Date(date);
+            return d.toISOString().slice(0,10);
+        }
+
+        let clocks = cargar('clocks');
+
+        function mostrarModal(msg) {
+            let modalBG = document.getElementById('modal-bg');
+            let modal = document.getElementById('modal-content');
+            modal.innerHTML = msg + '<br><br><button onclick="cerrarModal()">OK</button>';
+            modalBG.classList.add('active');
+        }
+        function cerrarModal() {
+            document.getElementById('modal-bg').classList.remove('active');
+        }
+
+        function registrarClock(tipo) {
+            let nombre = document.getElementById('clock-nombre').value.trim();
+            if(!nombre) { mostrarModal('Debes ingresar tu nombre o usuario.'); return; }
+            let fecha = document.getElementById('clock-fecha').value || hoy();
+            let hora = horaActual();
+            let timestamp = new Date().toISOString();
+            clocks.push({nombre, tipo, fecha, hora, timestamp});
+            guardar('clocks', clocks);
+            actualizarClock();
+            mostrarModal(`¡${tipo==='in'?'Bienvenido':'Hasta luego'} ${nombre}! Registro: ${hora}`);
+        }
+
+        function actualizarClock() {
+            let fechaSeleccionada = document.getElementById('clock-fecha').value || hoy();
+            let historialDiv = document.getElementById('clock-historial');
+            let poncheos = clocks
+                .map((c, idx) => ({...c, idx})) // include index for editing
+                .filter(c=>c.fecha===fechaSeleccionada)
+                .sort((a,b)=>a.timestamp.localeCompare(b.timestamp));
+
+            if(poncheos.length === 0) {
+                historialDiv.innerHTML = '<i>No hay registros para esta fecha.</i>';
+                return;
+            }
+
+            let tabla = `<table>
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Tipo</th>
+                        <th>Hora</th>
+                        <th>Fecha</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+            for(const c of poncheos) {
+                if(editandoIdx === c.idx) {
+                    // Modo edición de hora
+                    tabla += `<tr>
+                        <td>${c.nombre}</td>
+                        <td style="color:${c.tipo==='in'?'green':'red'};font-weight:bold">${c.tipo==='in'?'Entrada':'Salida'}</td>
+                        <td>
+                            <form onsubmit="guardarHoraEditada(event, ${c.idx})" class="edit-time-group">
+                                <input type="text" class="edit-time-input" id="edit-hora-input" value="${c.hora}" placeholder="hh:mm:ss AM/PM" autocomplete="off" required>
+                                <button type="submit" class="btn-clock" style="padding:4px 10px;font-size:14px;">Guardar</button>
+                                <button type="button" class="btn-clock" style="padding:4px 10px;font-size:14px;background:#B22222;" onclick="cancelarEdicionHora()">Cancelar</button>
+                            </form>
+                        </td>
+                        <td>${c.fecha}</td>
+                        <td></td>
+                    </tr>`;
+                } else {
+                    tabla += `<tr>
+                        <td>${c.nombre}</td>
+                        <td style="color:${c.tipo==='in'?'green':'red'};font-weight:bold">${c.tipo==='in'?'Entrada':'Salida'}</td>
+                        <td>${c.hora}</td>
+                        <td>${c.fecha}</td>
+                        <td>
+                            <button class="edit-btn" onclick="editarHora(${c.idx})" title="Editar hora">Editar</button>
+                            <button class="delete-btn" onclick="borrarPoncheo(${c.idx})" title="Eliminar poncheo">Borrar</button>
+                        </td>
+                    </tr>`;
+                }
+            }
+            tabla += '</tbody></table>';
+            historialDiv.innerHTML = tabla;
+        }
+
+        let editandoIdx = null;
+
+        function editarHora(idx) {
+            editandoIdx = idx;
+            actualizarClock();
+            setTimeout(()=>{
+                const input = document.getElementById('edit-hora-input');
+                if(input) input.focus();
+            }, 0);
+        }
+
+        function cancelarEdicionHora() {
+            editandoIdx = null;
+            actualizarClock();
+        }
+
+        function guardarHoraEditada(e, idx) {
+            e.preventDefault();
+            const input = document.getElementById('edit-hora-input');
+            let nuevaHora = input.value.trim();
+            // Validar formato hh:mm:ss AM/PM
+            if(!/^([0][1-9]|1[0-2]):[0-5][0-9]:[0-5][0-9] (AM|PM)$/i.test(nuevaHora)) {
+                mostrarModal('Formato inválido. Usa hh:mm:ss AM/PM, por ejemplo: 03:45:12 PM');
+                return;
+            }
+            let pos = clocks.findIndex(c=>c && typeof c === "object" && c.nombre && c.hora && typeof c.idx === "undefined" ? false : c.idx === idx);
+            if(pos === -1) pos = idx;
+            clocks[pos].hora = nuevaHora;
+            guardar('clocks', clocks);
+            editandoIdx = null;
+            actualizarClock();
+        }
+
+        function borrarPoncheo(idx) {
+            if(!confirm('¿Seguro que quieres borrar este poncheo?')) return;
+            let pos = clocks.findIndex(c=>c && typeof c === "object" && c.nombre && c.hora && typeof c.idx === "undefined" ? false : c.idx === idx);
+            if(pos === -1) pos = idx;
+            clocks.splice(pos, 1);
+            guardar('clocks', clocks);
+            actualizarClock();
+        }
+
+        function descargarPoncheos() {
+            let fechaSeleccionada = document.getElementById('clock-fecha').value || hoy();
+            let poncheos = clocks
+                .filter(c=>c.fecha===fechaSeleccionada)
+                .sort((a,b)=>a.timestamp.localeCompare(b.timestamp));
+
+            if(poncheos.length === 0) {
+                mostrarModal('No hay poncheos para descargar en la fecha seleccionada.');
+                return;
+            }
+
+            // Generar CSV
+            let contenido = "Nombre,Tipo,Hora,Fecha\n";
+            poncheos.forEach(c=>{
+                let tipoTexto = c.tipo==='in'?'Entrada':'Salida';
+                contenido += `"${c.nombre}","${tipoTexto}","${c.hora}","${c.fecha}"\n`;
+            });
+
+            let blob = new Blob([contenido], { type: "text/csv" });
+            let url = URL.createObjectURL(blob);
+
+            let a = document.createElement('a');
+            a.href = url;
+            a.download = `poncheos_${fechaSeleccionada}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(()=>{
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+        }
+
+        // Inicializar fecha del date input al día de hoy
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('clock-fecha').value = fechaInputValue();
+            actualizarClock();
+        });
+
+        document.getElementById('clock-fecha').addEventListener('change', function() {
+            cancelarEdicionHora();
+            actualizarClock();
+        });
+
+        // Exponer funciones globales
+        window.registrarClock = registrarClock;
+        window.cerrarModal = cerrarModal;
+        window.descargarPoncheos = descargarPoncheos;
+        window.editarHora = editarHora;
+        window.cancelarEdicionHora = cancelarEdicionHora;
+        window.guardarHoraEditada = guardarHoraEditada;
+        window.borrarPoncheo = borrarPoncheo;
+    </script>
+</body>
+</html>
